@@ -1,0 +1,63 @@
+version: '3.8' # Используем актуальную версию Docker Compose
+
+services:
+  backend:
+    container_name: happy-fridge-backend
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      APP_DATABASE_URL: ${APP_DATABASE_URL}
+      APP_JWT_SECRET_KEY: ${APP_JWT_SECRET_KEY}
+      APP_BIND_ADDR: ":8080"
+      APP_LOG_LEVEL: "debug"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - happy-fridge-net
+
+  db:
+    container_name: happy-fridge-db
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
+      POSTGRES_DB: ${DB_NAME:-happyfridge_dev}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-happyfridge_dev}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - happy-fridge-net
+  migrate:
+    container_name: happy-fridge-migrate
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      APP_DATABASE_URL: ${APP_DATABASE_URL}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - happy-fridge-net
+    command: ["migrate", "-path", "/app/migrations", "-database", "${APP_DATABASE_URL}", "up"]
+
+networks:
+  happy-fridge-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
